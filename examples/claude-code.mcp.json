@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "llmverify": {
+      "command": "node",
+      "args": ["C:/path/to/llmverify-mcp/dist/index.js"],
+      "env": {
+        "LLMVERIFY_MCP_MAX_INPUT_CHARS": "1000000"
+      }
+    }
+  }
+}

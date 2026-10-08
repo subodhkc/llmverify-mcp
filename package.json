@@ -1,0 +1,50 @@
+{
+  "name": "llmverify-mcp",
+  "version": "0.1.0",
+  "description": "Local-first MCP server exposing the llmverify AI output verification engine to MCP-compatible agents and development environments",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "bin": {
+    "llmverify-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/server.d.ts",
+  "files": [
+    "dist",
+    "vendor",
+    "docs",
+    "examples",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:security": "vitest run tests/security",
+    "test:e2e": "vitest run tests/e2e",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
+    "llmverify": "file:vendor/llmverify-1.6.1-758c002.tgz",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.12.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
+  }
+}
