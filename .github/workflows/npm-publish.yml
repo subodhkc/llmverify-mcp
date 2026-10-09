@@ -72,12 +72,14 @@ jobs:
           tar -tzf llmverify-mcp-*.tgz | grep -E '\.(env|key|pem|secret)$' && exit 1 || echo "No secrets found in package"
           rm llmverify-mcp-*.tgz
 
-      # Trusted publishing: no NPM_TOKEN. Authentication is via the GitHub
-      # Actions OIDC token (id-token: write above) + the trusted publisher
-      # configuration on npmjs.com. Provenance attestations are generated
-      # automatically.
+      # Registry auth uses the NPM_TOKEN granular access token (setup-node's
+      # registry-url writes it into .npmrc). --provenance is unaffected: the
+      # Sigstore attestation is signed with the job's OIDC identity
+      # (id-token: write above), not the registry credential.
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Output result
         run: |
