@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "llmverify": {
+      "command": "npx",
+      "args": ["llmverify-mcp"],
+      "env": {
+        "LLMVERIFY_HOME": "C:/Users/you/.llmverify"
+      }
+    }
+  }
+}
