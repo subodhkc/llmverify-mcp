@@ -251,8 +251,15 @@ export function redactPii(
   };
 }
 
-/** Capability discovery — straight pass-through of engine metadata. */
-export function describeCapabilities() {
+/**
+ * Capability discovery — straight pass-through of engine metadata.
+ *
+ * Absolute host paths are withheld by default: a capability call
+ * should not leak the operator's local filesystem layout to an MCP
+ * client. `includeLocalPaths` is the deliberate opt-in for that
+ * diagnostic detail.
+ */
+export function describeCapabilities(includeLocalPaths = false) {
   return {
     package: getPackageInfo(),
     adapterContractVersion: 'see contracts/version.ts',
@@ -260,16 +267,38 @@ export function describeCapabilities() {
     engineVersion: VERSION,
     capabilities: getEngineCapabilities(),
     localState: {
-      home: getLLMVerifyHome(),
-      logDir: getLogDir(),
-      auditDir: getAuditDir(),
-      baselineDir: getBaselineDir(),
-      usageFile: getUsageFile(),
+      fields: [
+        'home',
+        'logDir',
+        'auditDir',
+        'baselineDir',
+        'usageFile'
+      ] as const,
+      envOverrides: [
+        'LLMVERIFY_HOME',
+        'LLMVERIFY_LOG_DIR',
+        'LLMVERIFY_AUDIT_DIR',
+        'LLMVERIFY_BASELINE_DIR',
+        'LLMVERIFY_USAGE_FILE'
+      ] as const,
       note:
         'llmverify writes usage counters, audit JSONL (if enabled), ' +
-        'baseline state and operational logs under these paths. ' +
-        'Zero network access does not mean zero local writes.'
+        'baseline state and operational logs under these locations ' +
+        '(default: ~/.llmverify). Zero network access does not mean ' +
+        'zero local writes. Absolute paths are withheld by default — ' +
+        'pass includeLocalPaths: true to disclose them.',
+      ...(includeLocalPaths
+        ? {
+            paths: {
+              home: getLLMVerifyHome(),
+              logDir: getLogDir(),
+              auditDir: getAuditDir(),
+              baselineDir: getBaselineDir(),
+              usageFile: getUsageFile()
+            }
+          }
+        : {})
     },
-    resultSchemaFile: getVerifyResultSchemaPath()
+    resultSchemaFile: includeLocalPaths ? getVerifyResultSchemaPath() : null
   };
 }

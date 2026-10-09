@@ -99,6 +99,17 @@ const outputSchema = z.looseObject({
   meta: z.looseObject({}),
   warnings: z.array(z.string()),
   output: truncationSchema,
+  privacy: z
+    .object({
+      piiFieldsMasked: z.number(),
+      policy: z.string()
+    })
+    .describe(
+      'Privacy projection applied to input-echoing fields — ' +
+        'piiFieldsMasked counts fields where engine-detected PII was ' +
+        'masked. The internal engine result is richer; this response ' +
+        'is the privacy-filtered projection.'
+    ),
   error: toolErrorSchema.optional()
 });
 
@@ -129,7 +140,8 @@ export function registerVerifyTool(server: McpServer): void {
     async (args) => {
       try {
         const result = await verifyContent(args as VerifyToolInput);
-        const { result: bounded, output } = boundVerifyResult(result);
+        const { result: bounded, output, privacy } =
+          boundVerifyResult(result);
 
         const structured: Record<string, unknown> = {
           adapter: {
@@ -156,7 +168,8 @@ export function registerVerifyTool(server: McpServer): void {
           },
           meta: bounded.meta,
           warnings: bounded.warnings ?? [],
-          output
+          output,
+          privacy
         };
 
         // Serialized-size budget: if the envelope exceeds it, drop the

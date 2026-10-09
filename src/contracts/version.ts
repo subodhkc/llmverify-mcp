@@ -10,7 +10,15 @@
  */
 import { readFileSync } from 'node:fs';
 
-export const ADAPTER_CONTRACT_VERSION = '1.0';
+/**
+ * 1.1: privacy-hardened projection — verify_llm_content adds a
+ * `privacy` field and masks PII in input-echoing result fields;
+ * get_llmverify_capabilities `localState` reports env-var names and
+ * field slots instead of absolute host paths unless the caller opts in
+ * via `includeLocalPaths`; new error codes MCP_ADAPTER_QUEUE_FULL,
+ * MCP_ADAPTER_QUEUE_EXPIRED, MCP_ADAPTER_OUTPUT_TOO_LARGE.
+ */
+export const ADAPTER_CONTRACT_VERSION = '1.1';
 
 export const ADAPTER_NAME = 'llmverify-mcp';
 

@@ -44,11 +44,16 @@ the **caller-facing wait**, not the engine's work:
 - Stateful `verify()` calls execute in a serialized in-process lane
   (`src/security/lane.ts`). The lane tracks the real completion of the
   underlying work — never the raced timeout.
-- On timeout the caller receives `MCP_ADAPTER_TIMEOUT`
-  (`recoverable: true`). The engine call is **not** cancelled and
-  continues to hold the lane until it actually settles; a later verify
-  call cannot start while a timed-out one may still be writing usage,
-  audit, or baseline state.
+- On timeout the caller receives one of two distinct outcomes:
+  - `MCP_ADAPTER_TIMEOUT` — the call was **running** when the deadline
+    hit. The engine call is **not** cancelled and continues to hold
+    the lane until it actually settles; a later verify call cannot
+    start while a timed-out one may still be writing usage, audit, or
+    baseline state. The outcome is indeterminate — do not blindly
+    retry (state may have been written).
+  - `MCP_ADAPTER_QUEUE_EXPIRED` — the deadline passed while the call
+    was still **queued**. The engine call never started and never
+    will: no usage-quota consumption, no audit record. Safe to retry.
 - A timed-out operation never silently resolves as a successful result
   or audit receipt — the caller observed a rejection, period.
 - The lane is bounded (`LLMVERIFY_MCP_MAX_QUEUE_DEPTH`, default 16);
@@ -76,15 +81,39 @@ the **caller-facing wait**, not the engine's work:
 
 ## Output privacy
 
+The MCP response is a **privacy-filtered projection** of the engine's
+internal result — the internal `VerifyResult` is richer; the client
+receives a masked view. Masking is provable, never silent:
+`structuredContent.privacy.piiFieldsMasked` reports how many fields
+were scrubbed.
+
+- `verify_llm_content` — every input-echoing field passes through the
+  engine's own `redactPII()`: hallucination claim text, consistency
+  sections/contradictions, `json.schemaErrors`, `risk.interpretation`,
+  `warnings`, and all CSM6 finding `evidence` fields. For
+  privacy-category findings, `evidence.textSample` is the sensitive
+  match itself (the engine only partial-masks prefix/suffix) — it is
+  hard-replaced with `[REDACTED]`. `evidence.context` excerpts are
+  PII-scrubbed, not dropped.
 - `check_pii` findings mask evidence text samples (`[REDACTED]`) — a
   PII scanner must not echo the PII it found.
 - `redact_pii` returns only the redacted text plus type/position
-  metadata; original matched values are never returned.
+  metadata; original matched values are never returned. The
+  `replacement` marker is caller-controlled text inserted into the
+  output — it substitutes markers, it cannot recover originals.
 - Error messages pass through `sanitizeMessage()`, which strips
-  secret-looking `key=value` pairs and common token shapes and caps
-  message length. Stack traces are never returned to clients.
+  secret-looking `key=value` pairs and common token shapes, then a
+  final `redactPII` pass masks any PII echoed in engine error text.
+  Stack traces are never returned to clients.
+- `get_llmverify_capabilities` withholds absolute host paths by
+  default (`localState` reports field slots + env-var names only;
+  `resultSchemaFile` is `null`). `includeLocalPaths: true` is the
+  documented opt-in for real paths.
 - VerifyResult `json.parsed` and `consistency.similarityMatrix` are
   dropped from tool output (echo the input / O(n²) payload).
+
+Heuristic redaction is NOT exhaustive: PII in formats the engine's
+patterns do not detect still passes through input-echoing fields.
 
 ## Local state disclosure
 

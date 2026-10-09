@@ -8,6 +8,7 @@
  */
 
 import { LIMITS } from '../security/limits.js';
+import { redactPII } from 'llmverify';
 
 export interface NormalizedToolError {
   name: string;
@@ -40,7 +41,10 @@ export function sanitizeMessage(raw: string): string {
   if (msg.length > LIMITS.maxTextFieldChars) {
     msg = `${msg.slice(0, LIMITS.maxTextFieldChars)}… [truncated]`;
   }
-  return msg;
+  // Final privacy pass: if an engine error message echoes content
+  // containing detectable PII, mask it. Uses the engine's own
+  // redactPII — same pattern set as detection, no second scanner.
+  return redactPII(msg).redacted;
 }
 
 interface EngineErrorShape {
@@ -79,6 +83,19 @@ export function normalizeError(err: unknown): NormalizedToolError {
       name: 'AdapterTimeoutError',
       code: 'MCP_ADAPTER_TIMEOUT',
       message: sanitizeMessage(String(e.message ?? 'tool execution timed out')),
+      // Underlying work may still be running — outcome indeterminate.
+      recoverable: true
+    };
+  }
+
+  if ((err as AdapterTimeoutMarker)?.code === 'MCP_ADAPTER_QUEUE_EXPIRED') {
+    return {
+      name: 'QueueExpiredError',
+      code: 'MCP_ADAPTER_QUEUE_EXPIRED',
+      message: sanitizeMessage(
+        String(e.message ?? 'request expired in queue before starting')
+      ),
+      // Definite NOT-RUN: safe to retry.
       recoverable: true
     };
   }

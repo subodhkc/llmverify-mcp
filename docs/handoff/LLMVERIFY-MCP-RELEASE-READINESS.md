@@ -127,7 +127,68 @@ still points at `dist/index.js`.
 **Files:** `package.json`, `vendor/PROVENANCE.md`, `.gitignore`
 (`vendor/**/node_modules/`).
 
-## Security & privacy findings
+## Task 03C additions — final privacy & execution gate
+
+### 7. `verify_llm_content` leaked raw PII (P0)
+
+**Reproduction.** `verify()`'s CSM6 findings carry
+`evidence.textSample` (engine partial-mask: keeps first/last ~4 chars)
+and `evidence.context` (a raw ±30-char excerpt that contains the
+matched value AND adjacent content verbatim). `boundVerifyResult()`
+truncated but never redacted them, so a call like
+`"Email me at alice.smith@example.com…"` returned
+`context: "Email me at alice.smith@example.com or cal…"` in
+`structuredContent`. Hallucination claim text, consistency
+sections/contradictions, and `json.schemaErrors` also echo caller
+content.
+
+**Fix.** A shared privacy projection in `src/security/bounds.ts`
+(`PrivacyScrubber`) applies the engine's own `redactPII()` to every
+input-echoing field — claim text, sections, contradictions,
+schemaErrors, `risk.interpretation`, `warnings`, and finding evidence.
+Privacy-category findings get `textSample` hard-masked to
+`[REDACTED]` (the engine's partial mask leaks a prefix/suffix). The
+response reports provenance: `privacy.piiFieldsMasked` counts masked
+fields. Finding ids/types/severity/confidence/counts are preserved.
+
+**Before/after** (real MCP call, content with email+phone+SSN):
+before — serialized result contained the raw email in
+`csm6.findings[].evidence.context` and a partial mask leaking
+`alic…com` in `textSample`. After — zero occurrences of any raw value;
+`privacy.piiFieldsMasked: 6`; `audit.status: PERSISTED`; ids, types,
+severities intact.
+
+### 8. Queued requests could execute after expiring (P1)
+
+**Issue.** `run()` chained the work promise immediately and raced the
+caller against a timer — a call that timed out while still queued
+would still execute later, consuming usage quota and writing audit
+records after its caller saw a timeout.
+
+**Fix.** `ExecutionLane` now tracks `started`/`expired`. A deadline
+hit while queued sets `expired` — the lane slot resolves as a skipped
+sentinel, the work function is never invoked, and the caller gets
+`MCP_ADAPTER_QUEUE_EXPIRED` ("definite NOT-RUN, safe to retry",
+`recoverable: true`). A deadline hit while running still yields
+`MCP_ADAPTER_TIMEOUT` ("indeterminate — do not blindly retry"). Lane
+frees queued-expired slots immediately; running work still holds the
+lane until real settle.
+
+### 9. Host-path disclosure + error-message PII (P1)
+
+- `get_llmverify_capabilities` previously returned absolute
+  `LLMVERIFY_HOME`/audit/usage paths by default. Now `localState`
+  reports field slots + env-var names; `includeLocalPaths: true` is
+  the documented opt-in for real paths (`resultSchemaFile` is `null`
+  without it).
+- `sanitizeMessage()` now runs a final engine-`redactPII` pass —
+  engine error messages that echo content cannot carry PII through.
+
+**Contract bump.** `adapter.contractVersion` → `1.1` (new `privacy`
+field, `localState` shape change, new error codes). No tool names,
+engine APIs, or result-schema semantics changed.
+
+
 
 - No raw PII anywhere in the serialized `CallToolResult` — verified
   through the real MCP client path for email/phone/SSN/card content in
@@ -174,20 +235,30 @@ still points at `dist/index.js`.
 
 ## Tests & CI evidence
 
-Node 24.11.1 local + Node 22 CI: typecheck, lint, build, **65/65 tests
-(10 files)** — incl. real-stdio e2e, fail-closed audit persistence, lane
-semantics, skip-mapping, PII privacy through serialization, output-size
-honesty. All required gates re-run; no test removed or weakened.
+Node 24.11.1 local + Node 22 CI: typecheck, lint, build, **75/75 tests
+(11 files)** — incl. real-stdio e2e, fail-closed audit persistence,
+lane semantics (running-timeout vs queue-expiry), skip-mapping, PII
+privacy through serialization in both `check_pii`/`redact_pii` AND
+`verify_llm_content`, output-size honesty, capabilities path
+withholding. Packed-artifact smoke: clean install, side-effect-free
+import, real `initialize`/`tools/list`/`tools/call` handshake, zero PII
+in the serialized verify response. All required gates re-run; no test
+removed or weakened.
 
 ## Remaining limitations
 
-- Engine has no cancellation — timed-out work completes in the lane.
+- Engine has no cancellation — timed-out *running* work completes in
+  the lane (queued work that expires never runs).
 - Cross-process `LLMVERIFY_HOME` updates remain last-writer-wins.
+- The privacy projection relies on the engine's pattern set — PII in
+  formats `redactPII` does not detect still passes through
+  input-echoing fields. Heuristic masking is not exhaustive.
 - Bundled engine adds its runtime dep tree (~80 pkgs, incl. deprecated
   `glob`/`inflight` transitives) to the packed artifact — an accepted
   pre-release trade-off; the runtime audit surface stays clean.
-- `assess_hallucination_risk` `riskLabel` rename is a pre-release
-  contract change vs. the initial 0.1.0 draft.
+- `assess_hallucination_risk` `riskLabel` rename (→ engine's own label
+  domain) and `localState`/`privacy` contract changes are pre-release
+  bumps — adapter contract versioned `1.1` accordingly.
 
 ## Release blockers (explicit)
 

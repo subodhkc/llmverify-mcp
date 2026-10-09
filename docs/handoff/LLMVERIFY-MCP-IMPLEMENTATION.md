@@ -58,7 +58,10 @@ with explicit `truncations` metadata.
 ## Schema versions
 
 - Engine result schema: `"1.0"` (llmverify `RESULT_SCHEMA_VERSION`)
-- Adapter structured-content contract: `1.0` (`adapter.contractVersion`)
+- Adapter structured-content contract: `1.1` (`adapter.contractVersion`)
+  — adds the `privacy` masking-provenance field on verify results, the
+  `includeLocalPaths` opt-in on capabilities, and
+  `MCP_ADAPTER_QUEUE_EXPIRED` / `MCP_ADAPTER_OUTPUT_TOO_LARGE` codes
 - MCP protocol: negotiated by SDK v2 (latest + legacy 2025-era
   compatibility handled by the SDK)
 
@@ -83,7 +86,7 @@ lost-update limitation documented in docs/SECURITY.md — no locks added.
   the packed artifact)
 - `npm run typecheck` — clean
 - `npm run lint` (eslint 10 flat config) — clean
-- `npm test` — **65/65 tests, 10/10 files**:
+- `npm test` — **75/75 tests, 11/11 files**:
   - `tests/unit` — tool registration, schema contracts, capabilities
   - `tests/integration` — verify paths, skipEngines→notChecked, isJSON
     gating, profile, audit PERSISTED with on-disk `sha256:` entry digest,

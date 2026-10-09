@@ -17,6 +17,17 @@ import { LIMITS } from '../security/limits.js';
 import { getMaxOutputBytes } from '../security/size.js';
 import { verifyLane } from '../security/lane.js';
 
+const inputSchema = z.object({
+  includeLocalPaths: z
+    .boolean()
+    .optional()
+    .describe(
+      'Disclose absolute host paths for engine state directories. ' +
+        'Default false — clients get env-var names and field slots, ' +
+        'not the operator’s filesystem layout.'
+    )
+});
+
 const outputSchema = z.looseObject({
   adapter: z.object({
     name: z.string(),
@@ -44,6 +55,7 @@ export function registerCapabilitiesTool(server: McpServer): void {
         'adapter limits, and local state locations. Use this to ' +
         'discover what verification actually means here before ' +
         'interpreting tool results.',
+      inputSchema,
       outputSchema,
       annotations: {
         readOnlyHint: true,
@@ -52,9 +64,9 @@ export function registerCapabilitiesTool(server: McpServer): void {
         openWorldHint: false
       }
     },
-    async () => {
+    async ({ includeLocalPaths }) => {
       try {
-        const caps = describeCapabilities();
+        const caps = describeCapabilities(includeLocalPaths === true);
         return okResult(
           {
             adapter: {

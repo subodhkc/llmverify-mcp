@@ -76,7 +76,7 @@ describe('verify_llm_content contract', () => {
     expect(sc.resultSchemaVersion).toBe('1.0');
     expect((sc.engine as { name: string }).name).toBe('llmverify');
     expect((sc.adapter as { contractVersion: string }).contractVersion).toBe(
-      '1.0'
+      '1.1'
     );
     const risk = sc.risk as { level: string; action: string };
     expect(['low', 'moderate', 'high', 'critical']).toContain(risk.level);

@@ -13,7 +13,7 @@
  * of building an unbounded backlog.
  */
 
-import { LIMITS, withTimeout, adapterTimeoutError } from './limits.js';
+import { LIMITS, adapterTimeoutError } from './limits.js';
 
 export interface LaneTimeoutError extends Error {
   code: 'MCP_ADAPTER_TIMEOUT';
@@ -21,6 +21,24 @@ export interface LaneTimeoutError extends Error {
 
 export interface LaneQueueError extends Error {
   code: 'MCP_ADAPTER_QUEUE_FULL';
+}
+
+/** Caller deadline expired while the work was still QUEUED — it never ran. */
+export interface LaneExpiredError extends Error {
+  code: 'MCP_ADAPTER_QUEUE_EXPIRED';
+  recoverable: true;
+}
+
+function queueExpiredError(ms: number): LaneExpiredError {
+  const err = new Error(
+    `Request expired in the execution queue after ${ms}ms without ` +
+      'starting. The engine call was NEVER executed — it consumed no ' +
+      'usage quota and produced no audit record. Safe to retry.'
+  ) as LaneExpiredError;
+  err.name = 'QueueExpiredError';
+  err.code = 'MCP_ADAPTER_QUEUE_EXPIRED';
+  err.recoverable = true;
+  return err;
 }
 
 function envInt(name: string, fallback: number): number {
@@ -59,7 +77,29 @@ export class ExecutionLane {
    * operation has stopped — the result is reported as timed out, and
    * `lastOutcome` records what eventually happened for diagnostics.
    */
-  run<T>(work: () => Promise<T>, timeoutMs: number = LIMITS.toolTimeoutMs): Promise<T> {
+  /**
+   * Run `work` serialized, with a caller-facing deadline.
+   *
+   * Deadline semantics — two distinct outcomes:
+   *
+   * 1. Expired while QUEUED (`MCP_ADAPTER_QUEUE_EXPIRED`): the work
+   *    never started and never will — the lane slot resolves as a
+   *    skipped sentinel instead of invoking `work`, so an expired
+   *    request cannot later consume usage quota or write audit state.
+   *    This is a definite NOT-RUN; safe to retry.
+   * 2. Timed out while RUNNING (`MCP_ADAPTER_TIMEOUT`): the engine has
+   *    no abort hook, so the underlying call continues to hold the
+   *    lane until it actually settles. Its outcome is INDETERMINATE —
+   *    state may have been written; do not blindly retry.
+   *
+   * In both cases the lane frees the slot for subsequent work at the
+   * correct moment (on expiry for queued work, on real completion for
+   * running work) — later calls can never overlap a still-running one.
+   */
+  run<T>(
+    work: () => Promise<T>,
+    timeoutMs: number = LIMITS.toolTimeoutMs
+  ): Promise<T> {
     if (this.pending >= this.maxPending) {
       const err = new Error(
         `Execution lane is full (${this.maxPending} pending calls) — retry later`
@@ -70,8 +110,19 @@ export class ExecutionLane {
     }
 
     this.pending++;
-    // The lane tracks the REAL work, not the raced timeout.
-    const real = this.tail.then(work, work);
+    let started = false;
+    let expired = false;
+
+    // The lane tracks the REAL work — but only if it hasn't expired
+    // in the queue first.
+    const real = this.tail.then(() => {
+      if (expired) {
+        throw queueExpiredError(timeoutMs);
+      }
+      started = true;
+      return work();
+    });
+
     this.tail = real
       .then(
         () => undefined,
@@ -81,7 +132,28 @@ export class ExecutionLane {
         this.pending--;
       });
 
-    return withTimeout(real, timeoutMs);
+    return new Promise<T>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      real.then(
+        (v) => {
+          if (timer !== undefined) clearTimeout(timer);
+          resolve(v);
+        },
+        (e) => {
+          if (timer !== undefined) clearTimeout(timer);
+          reject(e);
+        }
+      );
+      timer = setTimeout(() => {
+        if (!started) expired = true;
+        reject(
+          started
+            ? adapterTimeoutError(timeoutMs)
+            : queueExpiredError(timeoutMs)
+        );
+      }, timeoutMs);
+      if (typeof timer === 'object' && 'unref' in timer) timer.unref();
+    });
   }
 }
 
