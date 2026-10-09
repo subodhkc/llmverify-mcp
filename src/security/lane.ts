@@ -133,18 +133,7 @@ export class ExecutionLane {
       });
 
     return new Promise<T>((resolve, reject) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      real.then(
-        (v) => {
-          if (timer !== undefined) clearTimeout(timer);
-          resolve(v);
-        },
-        (e) => {
-          if (timer !== undefined) clearTimeout(timer);
-          reject(e);
-        }
-      );
-      timer = setTimeout(() => {
+      const timer = setTimeout(() => {
         if (!started) expired = true;
         reject(
           started
@@ -153,6 +142,16 @@ export class ExecutionLane {
         );
       }, timeoutMs);
       if (typeof timer === 'object' && 'unref' in timer) timer.unref();
+      real.then(
+        (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        (e) => {
+          clearTimeout(timer);
+          reject(e);
+        }
+      );
     });
   }
 }
