@@ -1,33 +1,19 @@
 # Engine Compatibility
 
-## Pinned engine version used for development and testing
+## Published engine dependency
 
 | Property | Value |
 |---|---|
-| Engine package | `llmverify@1.6.1` (pre-release build — NOT the npm registry artifact) |
+| Engine package | `llmverify@1.7.0` (npm registry) |
 | Source | `subodhkc/llmverify-npm`, PR #21 `fix/llmverify-contract-audit-hardening` |
-| **Tested commit** | `758c002aeb4668b42e41dc3bf397c952b8d2c2f6` |
-| Tarball | `vendor/llmverify-1.6.1-758c002.tgz` (built with `npm run build && npm pack` on that commit; sha256 in `vendor/PROVENANCE.md`) |
-| Dependency declaration | `"llmverify": "file:vendor/llmverify-1.6.1-758c002.tgz"` + `"bundleDependencies": ["llmverify"]` — the `file:` spec serves `npm ci`/checkouts; the bundle serves packed-tarball installs (npm cannot resolve a nested `file:` tgz mid-extraction). A missing bundle fails loudly — no silent fallback to published `1.6.1` |
+| Dependency declaration | `"llmverify": "^1.7.0"` — resolves the hardened published artifact; the published `1.6.1` predates the hardened contract and must not be resolved. The `^` range is safe: the hardened API landed as a MINOR (additive, backward-compatible) bump, and `validateVerifyResult` below fails loudly if an incompatible result ever arrives |
 
-## Why the tarball is vendored
-
-PR #21's hardened functionality (observable audit persistence,
-fail-closed `requirePersistence`, versioned result schema,
+The hardened functionality this adapter requires (observable audit
+persistence, fail-closed `requirePersistence`, versioned result schema,
 `validateVerifyResult`, capability discovery, env-configurable state
-paths, atomic state writes) is **not yet published to npm**. The
-published `llmverify@1.6.1` predates it. The vendored tarball makes this
-repository independently buildable and testable against the exact
-reviewed commit — no git submodule, no registry assumption.
-
-## Before publishing this adapter
-
-When a `llmverify` release containing the PR #21 contract lands on npm:
-
-1. Verify the published version includes the hardened API
-   (`validateVerifyResult`, `RESULT_SCHEMA_VERSION`, audit receipts).
-2. Replace the `file:vendor/...` dependency with that semver range.
-3. Re-run `npm ci && npm test` and update this document + the handoff.
+paths, atomic state writes) first became available in `llmverify@1.7.0`.
+Earlier development used a vendored pre-release tarball; it was removed
+once `1.7.0` was published.
 
 ## Public API surface consumed
 
@@ -53,7 +39,7 @@ it is deliberately NOT exposed as a tool input.
 ## Result contract
 
 - Engine result schema: `"1.0"` (`RESULT_SCHEMA_VERSION`,
-  `schema/verify-result.schema.json` shipped in the engine tarball).
+  `schema/verify-result.schema.json` shipped in the engine package).
 - Adapter output contract: `1.0` (`adapter.contractVersion`) — separate
   version domain; adapter envelopes may evolve independently.
 - `enginesNotChecked` uses the ENGINE's engine-id vocabulary: note it

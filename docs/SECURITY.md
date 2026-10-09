@@ -168,9 +168,7 @@ The adapter writes no files of its own.
 ## Dependency posture
 
 Runtime dependencies: `@modelcontextprotocol/server` (v2),
-`llmverify` (vendored pinned tarball), `zod` v4. `npm audit` reported
-**0 vulnerabilities** at implementation time for the adapter's own tree.
-The engine's published dependency tree carries known audit findings
-(45 advisories on the upstream `npm ci` baseline, none in code paths
-reachable through this adapter's stdio surface — see
-`docs/ENGINE-COMPATIBILITY.md` and the handoff doc for the assessment).
+`llmverify` (published npm dependency `^1.7.0`), `zod` v4.
+`npm audit --omit=dev` reported **0 vulnerabilities** for the adapter's
+production tree — including the engine's published dependency tree —
+at release time.

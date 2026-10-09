@@ -11,8 +11,8 @@ Every result envelope includes:
 
 ```jsonc
 {
-  "adapter": { "name": "llmverify-mcp", "version": "0.1.0", "contractVersion": "1.0" },
-  "engine":  { "name": "llmverify", "version": "1.6.1" },
+  "adapter": { "name": "llmverify-mcp", "version": "1.0.0", "contractVersion": "1.1" },
+  "engine":  { "name": "llmverify", "version": "1.7.0" },
   "output":  { "truncated": false, "truncations": [] }
 }
 ```

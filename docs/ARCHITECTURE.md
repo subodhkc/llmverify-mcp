@@ -65,7 +65,7 @@ AI agent / MCP client
 ```
 llmverify-mcp
 ├── @modelcontextprotocol/server   protocol + stdio transport
-├── llmverify                      engine (vendored tarball, pinned commit)
+├── llmverify                      engine (published npm dependency ^1.7.0)
 └── zod                            tool schemas (Standard Schema)
 ```
 

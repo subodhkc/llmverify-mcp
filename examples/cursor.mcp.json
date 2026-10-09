@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "llmverify": {
-      "command": "node",
-      "args": ["C:/path/to/llmverify-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["llmverify-mcp"],
       "env": {
         "LLMVERIFY_HOME": "C:/Users/you/.llmverify"
       }

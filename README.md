@@ -38,7 +38,15 @@ the default path, no telemetry.
 - **Node.js >= 22**
 - npm
 
-## Install and build
+## Install
+
+```bash
+npm install -g llmverify-mcp
+# or run without installing:
+npx llmverify-mcp
+```
+
+To build from source instead:
 
 ```bash
 git clone https://github.com/subodhkc/llmverify-mcp.git
@@ -47,9 +55,10 @@ npm ci
 npm run build
 ```
 
-This produces `dist/index.js` (the server entrypoint). The bundled
-`llmverify` engine dependency is vendored under `vendor/` — see
-`docs/ENGINE-COMPATIBILITY.md` for provenance and how to update it.
+This produces `dist/index.js` (the server entrypoint). The `llmverify`
+engine is a normal npm dependency (`^1.7.0`, which first shipped the
+hardened contract this adapter requires) — see
+`docs/ENGINE-COMPATIBILITY.md` for the version requirements.
 
 ## Configure an MCP client
 
@@ -60,8 +69,8 @@ This produces `dist/index.js` (the server entrypoint). The bundled
 {
   "mcpServers": {
     "llmverify": {
-      "command": "node",
-      "args": ["C:/path/to/llmverify-mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["llmverify-mcp"]
     }
   }
 }
@@ -70,8 +79,11 @@ This produces `dist/index.js` (the server entrypoint). The bundled
 Or register it with the CLI:
 
 ```bash
-claude mcp add llmverify -- node C:/path/to/llmverify-mcp/dist/index.js
+claude mcp add llmverify -- npx llmverify-mcp
 ```
+
+For a source checkout, point `args` at the built entrypoint instead:
+`["node", "C:/path/to/llmverify-mcp/dist/index.js"]`.
 
 ### Cursor
 
@@ -80,8 +92,8 @@ claude mcp add llmverify -- node C:/path/to/llmverify-mcp/dist/index.js
 {
   "mcpServers": {
     "llmverify": {
-      "command": "node",
-      "args": ["C:/path/to/llmverify-mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["llmverify-mcp"]
     }
   }
 }
@@ -89,7 +101,8 @@ claude mcp add llmverify -- node C:/path/to/llmverify-mcp/dist/index.js
 
 ### Any MCP stdio client
 
-Spawn `node dist/index.js` and speak MCP over stdin/stdout. See
+Spawn `npx llmverify-mcp` (or `node dist/index.js` from a source
+checkout) and speak MCP over stdin/stdout. See
 `examples/generic-client.mjs` for a minimal working client using the
 official SDK.
 
@@ -151,8 +164,7 @@ npm pack --dry-run  # inspect the publishable tarball
 - `docs/ARCHITECTURE.md` — component and trust boundaries
 - `docs/SECURITY.md` — threat model, limits, privacy guarantees
 - `docs/MCP-TOOLS.md` — tool contracts and result semantics
-- `docs/ENGINE-COMPATIBILITY.md` — pinned engine commit and upgrade path
-- `docs/handoff/LLMVERIFY-MCP-IMPLEMENTATION.md` — implementation handoff
+- `docs/ENGINE-COMPATIBILITY.md` — engine version requirements
 
 ## License
 

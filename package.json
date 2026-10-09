@@ -1,7 +1,14 @@
 {
   "name": "llmverify-mcp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Local-first MCP server exposing the llmverify AI output verification engine to MCP-compatible agents and development environments",
+  "mcpName": "io.github.subodhkc/llmverify-mcp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/subodhkc/llmverify-mcp.git"
+  },
+  "homepage": "https://github.com/subodhkc/llmverify-mcp",
+  "bugs": "https://github.com/subodhkc/llmverify-mcp/issues",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -20,7 +27,6 @@
   },
   "files": [
     "dist",
-    "vendor",
     "docs",
     "examples",
     "README.md",
@@ -41,12 +47,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",
-    "llmverify": "file:vendor/llmverify-1.6.1-758c002.tgz",
+    "llmverify": "^1.7.0",
     "zod": "^4.2.0"
   },
-  "bundleDependencies": [
-    "llmverify"
-  ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@modelcontextprotocol/client": "^2.3.1",

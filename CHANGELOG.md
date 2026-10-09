@@ -1,8 +1,25 @@
 # Changelog
 
+## [1.0.0] - 2026-10-09
+
+First public release.
+
+### Changed
+
+- Engine dependency moved from the vendored pre-release tarball
+  (`file:vendor/llmverify-1.6.1-758c002.tgz` + `bundleDependencies`) to the
+  published npm package `llmverify@^1.7.0`, which ships the hardened
+  contract this adapter requires (observable audit persistence,
+  `validateVerifyResult`, versioned result schema).
+
+### Removed
+
+- `vendor/` directory and `bundleDependencies` — no longer needed now
+  that the hardened engine is on the registry.
+
 ## [0.1.0] - 2026-10-08
 
-Initial implementation.
+Initial implementation (private, unreleased).
 
 ### Added
 

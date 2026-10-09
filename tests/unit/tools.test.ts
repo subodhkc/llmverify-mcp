@@ -97,7 +97,7 @@ describe('get_llmverify_capabilities contract', () => {
     });
     const sc = structured(result);
     expect(sc.resultSchemaVersion).toBe('1.0');
-    expect((sc.engine as { version: string }).version).toBe('1.6.1');
+    expect((sc.engine as { version: string }).version).toBe('1.7.0');
     const caps = sc.capabilities as Array<{
       observes?: string;
       doesNotEstablish?: string;
