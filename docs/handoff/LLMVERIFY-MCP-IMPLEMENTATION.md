@@ -9,11 +9,12 @@ supported package exports only.
 
 ## Dependency boundaries
 
-- Engine consumed as a vendored **extracted package** at
-  `vendor/llmverify/` (contents of `llmverify-1.6.1-758c002.tgz`),
-  declared as `"file:vendor/llmverify"` + `bundleDependencies` so packed
-  installs resolve it. `file:` tarball deps do NOT survive `npm pack` —
-  see release-readiness doc §Dependency & packaging.
+- Engine consumed as vendored npm tarball
+  `vendor/llmverify-1.6.1-758c002.tgz`, declared `file:` +
+  `bundleDependencies: ["llmverify"]` — the `file:` spec serves
+  `npm ci`/checkout installs; the bundle serves packed-tarball installs
+  (a nested `file:` tgz cannot resolve mid-extraction — see
+  release-readiness doc §Dependency & packaging).
 - Adapter code imports ONLY `from 'llmverify'` (package root). No
   `dist/` internals, no copied engine source.
 - MCP SDK: `@modelcontextprotocol/server@^2.3.1` (stable **v2** line,

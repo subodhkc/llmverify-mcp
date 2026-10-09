@@ -7,8 +7,8 @@
 | Engine package | `llmverify@1.6.1` (pre-release build — NOT the npm registry artifact) |
 | Source | `subodhkc/llmverify-npm`, PR #21 `fix/llmverify-contract-audit-hardening` |
 | **Tested commit** | `758c002aeb4668b42e41dc3bf397c952b8d2c2f6` |
-| Vendored package | `vendor/llmverify/` — extracted contents of `llmverify-1.6.1-758c002.tgz` (built with `npm run build && npm pack` on that commit; tarball sha256 in `vendor/PROVENANCE.md`) |
-| Dependency declaration | `"llmverify": "file:vendor/llmverify"` + `"bundleDependencies": ["llmverify"]` — the bundle makes `npm pack` artifacts self-contained; a missing bundle fails loudly, it cannot fall back to the older published `1.6.1` |
+| Tarball | `vendor/llmverify-1.6.1-758c002.tgz` (built with `npm run build && npm pack` on that commit; sha256 in `vendor/PROVENANCE.md`) |
+| Dependency declaration | `"llmverify": "file:vendor/llmverify-1.6.1-758c002.tgz"` + `"bundleDependencies": ["llmverify"]` — the `file:` spec serves `npm ci`/checkouts; the bundle serves packed-tarball installs (npm cannot resolve a nested `file:` tgz mid-extraction). A missing bundle fails loudly — no silent fallback to published `1.6.1` |
 
 ## Why the tarball is vendored
 

@@ -107,14 +107,17 @@ tarball is installed** — npm cannot resolve a nested `file:` tarball
 inside an extracting package (verified: `ENOENT ... node_modules/
 llmverify-mcp/vendor/llmverify-1.6.1-758c002.tgz`).
 
-**Fix.** Vendor the **extracted** engine package at `vendor/llmverify/`,
-declare `"llmverify": "file:vendor/llmverify"`, and add
-`bundleDependencies: ["llmverify"]` — the canonical npm mechanism for
-shipping an unpublished dependency inside a packed artifact. If the
-bundle is ever absent the install fails loudly; it cannot fall back to
-the older published `1.6.1`. Verified: clean `npm install` of the
-packed tarball, programmatic `import('llmverify-mcp')` returns the pure
-factory, and the `bin` serves a real MCP `initialize` handshake.
+**Fix.** Keep `"llmverify": "file:vendor/llmverify-1.6.1-758c002.tgz"`
+(serves `npm ci` and checkout installs; a `file:` **directory** dep was
+tried and broke `npm ci` on CI's npm 10 — the tarball spec is the
+proven path) and add `bundleDependencies: ["llmverify"]` — the
+canonical npm mechanism that ships the resolved `node_modules/
+llmverify` inside the packed artifact so consumers never resolve the
+nested `file:` spec. If the bundle is absent the install fails loudly;
+it cannot fall back to the older published `1.6.1`. Verified: clean
+`npm install` of the packed tarball, programmatic
+`import('llmverify-mcp')` returns the pure factory, and the `bin`
+serves a real MCP `initialize` handshake.
 
 **Also fixed:** `"main": "dist/index.js"` made library import hijack
 stdio. `main`/`types`/`exports` now point at `dist/server.js` (the

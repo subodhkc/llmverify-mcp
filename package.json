@@ -41,7 +41,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",
-    "llmverify": "file:vendor/llmverify",
+    "llmverify": "file:vendor/llmverify-1.6.1-758c002.tgz",
     "zod": "^4.2.0"
   },
   "bundleDependencies": [
