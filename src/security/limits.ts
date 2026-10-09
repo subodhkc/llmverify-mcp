@@ -49,8 +49,12 @@ export interface AdapterTimeoutError extends Error {
 
 export function adapterTimeoutError(ms: number): AdapterTimeoutError {
   const err = new Error(
-    `Tool execution exceeded the adapter timeout of ${ms}ms`
+    `Tool execution exceeded the adapter timeout of ${ms}ms. ` +
+      'The underlying engine call is NOT cancelled — it continues in ' +
+      'the serialized lane until it settles. The result is timed out, ' +
+      'not terminated.'
   ) as AdapterTimeoutError;
+  err.name = 'AdapterTimeoutError';
   err.code = 'MCP_ADAPTER_TIMEOUT';
   return err;
 }

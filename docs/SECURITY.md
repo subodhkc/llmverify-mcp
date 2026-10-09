@@ -28,10 +28,51 @@ path, never able to modify the tool registry or server configuration.
 | Tool wall-clock timeout | 60,000 ms | `LLMVERIFY_MCP_TIMEOUT_MS` |
 | Max items in any output array | 50 | `LLMVERIFY_MCP_MAX_OUTPUT_ITEMS` |
 | Max chars per output text field | 2,000 | `LLMVERIFY_MCP_MAX_TEXT_FIELD_CHARS` |
+| Max serialized `structuredContent` bytes | 262,144 | `LLMVERIFY_MCP_MAX_OUTPUT_BYTES` |
+| Max queued/running stateful verify calls | 16 | `LLMVERIFY_MCP_MAX_QUEUE_DEPTH` |
+| `expectedSchema` input | ≤64 KiB serialized, ≤32 nesting depth | not configurable |
 
 Oversized input is rejected at the zod schema layer before the engine
 runs. Bounded output fields report omissions explicitly via
 `output.truncations` — never silently.
+
+## Timeout & cancellation semantics
+
+The engine has no abort/cancellation hook. The adapter timeout bounds
+the **caller-facing wait**, not the engine's work:
+
+- Stateful `verify()` calls execute in a serialized in-process lane
+  (`src/security/lane.ts`). The lane tracks the real completion of the
+  underlying work — never the raced timeout.
+- On timeout the caller receives `MCP_ADAPTER_TIMEOUT`
+  (`recoverable: true`). The engine call is **not** cancelled and
+  continues to hold the lane until it actually settles; a later verify
+  call cannot start while a timed-out one may still be writing usage,
+  audit, or baseline state.
+- A timed-out operation never silently resolves as a successful result
+  or audit receipt — the caller observed a rejection, period.
+- The lane is bounded (`LLMVERIFY_MCP_MAX_QUEUE_DEPTH`, default 16);
+  excess calls fail fast with `MCP_ADAPTER_QUEUE_FULL` instead of
+  building an unbounded backlog.
+- Pure read-only tools (hallucination, injection, PII, redact,
+  capabilities) do not share the lane; they are state-free.
+
+## Serialized output budget
+
+`LLMVERIFY_MCP_MAX_OUTPUT_BYTES` is measured on the serialized
+`structuredContent`, not estimated per field. When a result exceeds it:
+
+- `verify_llm_content` drops the bulky `engineResults` pass-through to
+  `{omittedForSize: true, engines: [...]}` and records the omission in
+  `output.truncations`. If still over budget it fails with
+  `MCP_ADAPTER_OUTPUT_TOO_LARGE`.
+- `check_pii` / `check_prompt_injection` drop the `findings` (and
+  `recommendations`) arrays to `[]` + an `*Omitted` count, recorded in
+  `output.truncations`. `findingsCount` always reports the true total.
+- `redact_pii` **never truncates the redacted document** — a redaction
+  that cannot fit returns an explicit `MCP_ADAPTER_OUTPUT_TOO_LARGE`
+  error with no `redacted` field. Supported alternatives: raise the
+  budget env var, or call `redactPII` programmatically.
 
 ## Output privacy
 

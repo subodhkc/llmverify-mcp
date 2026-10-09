@@ -35,7 +35,13 @@ const outputSchema = z.looseObject({
   engine: engineIdentitySchema,
   evaluation: z.enum(['COMPLETED', 'PARTIAL', 'FAILED']),
   riskScore: z.number(),
-  riskLevel: z.enum(['low', 'moderate', 'high', 'critical']),
+  riskLabel: z
+    .enum(['low', 'medium', 'high'])
+    .describe(
+      "Engine-authoritative classification from llmverify's exported " +
+        'getHallucinationLabel() — the hallucination engine\'s own ' +
+        'label semantics, distinct from the verify() risk.level bands.'
+    ),
   riskIndicators: z.looseObject({}),
   suspiciousClaims: z.array(z.looseObject({})),
   claimsEvaluated: z.number(),
@@ -92,7 +98,7 @@ export function registerHallucinationTool(server: McpServer): void {
             engine: { name: 'llmverify', version: ENGINE_VERSION },
             evaluation: 'COMPLETED',
             riskScore: assessment.riskScore,
-            riskLevel: assessment.riskLevel,
+            riskLabel: assessment.riskLabel,
             riskIndicators: assessment.riskIndicators as Record<string, unknown>,
             suspiciousClaims: suspiciousClaims as Record<string, unknown>[],
             claimsEvaluated: assessment.claimsEvaluated,
@@ -105,7 +111,7 @@ export function registerHallucinationTool(server: McpServer): void {
             ],
             output: t.report()
           } as Record<string, unknown>,
-          `Hallucination risk: ${assessment.riskLevel} (${assessment.riskScore.toFixed(2)}) — ` +
+          `Hallucination risk: ${assessment.riskLabel} (${assessment.riskScore.toFixed(2)}) — ` +
             `${suspiciousClaims.length}/${assessment.claimsEvaluated} claims flagged for review. ` +
             'Risk signal only; not a factual verdict.'
         );

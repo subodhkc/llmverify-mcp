@@ -16,6 +16,7 @@ import {
 } from '../schemas/common.js';
 import { assessPii } from '../adapters/llmverify.js';
 import { TruncationTracker, maskFindingEvidence } from '../security/bounds.js';
+import { enforceResponseBudget } from '../security/size.js';
 import { ADAPTER_CONTRACT_VERSION, ADAPTER_NAME, adapterVersion } from '../contracts/version.js';
 import { okResult, errorResult } from '../contracts/results.js';
 import { VERSION as ENGINE_VERSION } from 'llmverify';
@@ -93,20 +94,19 @@ export function registerPiiTool(server: McpServer): void {
             };
           });
 
-        return okResult(
-          {
-            adapter: {
-              name: ADAPTER_NAME,
-              version: adapterVersion(),
-              contractVersion: ADAPTER_CONTRACT_VERSION
-            },
-            engine: { name: 'llmverify', version: ENGINE_VERSION },
-            evaluation: 'COMPLETED',
-            piiDetected: assessment.containsPII,
-            riskScore: assessment.riskScore,
-            piiTypes: assessment.piiTypes,
-            findings: findings as Record<string, unknown>[],
-            findingsCount: assessment.findings.length,
+        const structured: Record<string, unknown> = {
+          adapter: {
+            name: ADAPTER_NAME,
+            version: adapterVersion(),
+            contractVersion: ADAPTER_CONTRACT_VERSION
+          },
+          engine: { name: 'llmverify', version: ENGINE_VERSION },
+          evaluation: 'COMPLETED',
+          piiDetected: assessment.containsPII,
+          riskScore: assessment.riskScore,
+          piiTypes: assessment.piiTypes,
+          findings: findings as Record<string, unknown>[],
+          findingsCount: assessment.findings.length,
             methodology:
               'Pattern-based PII detection across common formats ' +
               '(emails, phones, payment cards, identifiers). Matched ' +
@@ -117,7 +117,26 @@ export function registerPiiTool(server: McpServer): void {
               'Raw PII values are withheld from output by design'
             ],
             output: t.report()
-          } as Record<string, unknown>,
+        };
+
+        const finalStructured = enforceResponseBudget(structured, (s) => {
+          const omitted = (s.findings as unknown[]).length;
+          return {
+            ...s,
+            findings: [],
+            findingsOmitted: omitted,
+            output: {
+              truncated: true,
+              truncations: [
+                ...(s.output as { truncations: unknown[] }).truncations,
+                { path: 'findings', omitted }
+              ]
+            }
+          };
+        });
+
+        return okResult(
+          finalStructured,
           assessment.containsPII
             ? `PII detected: ${assessment.piiTypes.join(', ') || 'unspecified'} — ` +
                 `${assessment.findings.length} finding(s), risk ${assessment.riskScore.toFixed(2)}. ` +

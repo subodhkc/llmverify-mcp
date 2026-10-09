@@ -41,7 +41,7 @@ describe('assess_hallucination_risk', () => {
     expect(result.isError).toBeFalsy();
     expect(sc.evaluation).toBe('COMPLETED');
     expect(typeof sc.riskScore).toBe('number');
-    expect(['low', 'moderate', 'high', 'critical']).toContain(sc.riskLevel);
+    expect(['low', 'medium', 'high']).toContain(sc.riskLabel);
     expect(Array.isArray(sc.suspiciousClaims)).toBe(true);
     expect(typeof sc.claimsEvaluated).toBe('number');
     const limits = sc.limitations as string[];

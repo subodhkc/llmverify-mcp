@@ -43,6 +43,9 @@ import type {
 } from 'llmverify';
 
 import { LIMITS, withTimeout } from '../security/limits.js';
+import { verifyLane } from '../security/lane.js';
+import { getHallucinationLabel } from 'llmverify';
+import type { HallucinationLabel } from 'llmverify';
 
 export type VerificationProfile =
   | 'baseline'
@@ -70,24 +73,17 @@ export interface VerifyToolInput {
 }
 
 /**
- * Serialized lane for calls that mutate llmverify local state
- * (usage counter, audit JSONL append, drift baseline). The engine's
- * atomic writes prevent torn JSON between processes, but read-modify-
- * write updates are still last-writer-wins across processes — so we
- * serialize them inside THIS process. Cross-process coordination is
- * documented as out of scope; no locks are added.
+ * Public MCP engine identifiers → the identifiers the engine's
+ * `context.skipEngines` actually recognizes. The engine names its JSON
+ * validator 'json' internally; the public tool contract keeps the
+ * descriptive 'jsonValidator' and maps it here.
  */
-let stateLane: Promise<unknown> = Promise.resolve();
-
-function enqueueStateful<T>(work: () => Promise<T>): Promise<T> {
-  const next = stateLane.then(work, work);
-  // Keep the lane alive regardless of individual outcomes.
-  stateLane = next.then(
-    () => undefined,
-    () => undefined
-  );
-  return next;
-}
+const PUBLIC_TO_ENGINE_ID: Record<EngineId, string> = {
+  hallucination: 'hallucination',
+  consistency: 'consistency',
+  jsonValidator: 'json',
+  csm6: 'csm6'
+};
 
 /**
  * General verification. Returns the engine's VerifyResult — semantics
@@ -111,7 +107,8 @@ export async function verifyContent(
     context: {
       isJSON: input.isJSON,
       expectedSchema: input.expectedSchema,
-      skipEngines: input.skipEngines
+      // Translate public engine ids → engine-internal ids ('jsonValidator' → 'json')
+      skipEngines: input.skipEngines?.map((id) => PUBLIC_TO_ENGINE_ID[id])
     },
     audit: {
       requirePersistence: input.requireAuditPersistence === true
@@ -121,9 +118,11 @@ export async function verifyContent(
   // The engine returns a fully-formed VerifyResult; we validate it
   // against the shipped contract before exposing it (defense in depth —
   // a contract violation becomes an adapter error, not a bad payload).
-  const result = await enqueueStateful(() =>
-    withTimeout(verify(options), LIMITS.toolTimeoutMs)
-  );
+  //
+  // verifyLane serializes stateful calls; its timeout races the CALLER'S
+  // promise only — the underlying verify() keeps the lane until it
+  // actually settles, so a timed-out call can never overlap a later one.
+  const result = await verifyLane.run(() => verify(options));
 
   const check = validateVerifyResult(result);
   if (!check.valid) {
@@ -141,7 +140,14 @@ export async function verifyContent(
 
 export interface HallucinationAssessment {
   riskScore: number;
-  riskLevel: 'low' | 'moderate' | 'high' | 'critical';
+  /**
+   * Engine-authoritative label from llmverify's exported
+   * `getHallucinationLabel()` — 'low' | 'medium' | 'high'. This is the
+   * engine's own classification of its hallucination-risk score; the
+   * adapter does NOT re-derive it from the general risk-scoring
+   * thresholds (different score type, different semantics).
+   */
+  riskLabel: HallucinationLabel;
   riskIndicators: unknown;
   suspiciousClaims: unknown[];
   claimsEvaluated: number;
@@ -162,7 +168,7 @@ export async function assessHallucinationRisk(
   const result = await withTimeout(engine.detect(content), LIMITS.toolTimeoutMs);
   return {
     riskScore: result.riskScore,
-    riskLevel: scoreToLevel(result.riskScore),
+    riskLabel: getHallucinationLabel(result.riskScore),
     riskIndicators: result.riskIndicators,
     suspiciousClaims: result.suspiciousClaims,
     claimsEvaluated: result.claims.length,
@@ -170,16 +176,6 @@ export async function assessHallucinationRisk(
     methodology: result.methodology,
     limitations: result.limitations
   };
-}
-
-/** Same thresholds as the engine's RiskScoringEngine. */
-function scoreToLevel(
-  score: number
-): 'low' | 'moderate' | 'high' | 'critical' {
-  if (score >= 0.75) return 'critical';
-  if (score >= 0.5) return 'high';
-  if (score >= 0.25) return 'moderate';
-  return 'low';
 }
 
 export interface InjectionAssessment {
@@ -203,15 +199,27 @@ export interface PiiAssessment {
   piiTypes: string[];
 }
 
-export function assessPii(content: string): PiiAssessment {
-  const findings = checkPII(content);
-  const types = [
+/**
+ * Extract distinct PII type labels from engine findings.
+ * Engine contract: PII findings carry `metadata.piiType` (plus
+ * `metadata.piiCategory`). Findings with missing/unexpected metadata
+ * contribute no type — they are still counted in findingsCount.
+ */
+export function extractPiiTypes(findings: Finding[]): string[] {
+  return [
     ...new Set(
       findings
-        .map((f) => (f.metadata as { type?: string } | undefined)?.type)
+        .map(
+          (f) => (f.metadata as { piiType?: string } | undefined)?.piiType
+        )
         .filter((t): t is string => typeof t === 'string')
     )
   ];
+}
+
+export function assessPii(content: string): PiiAssessment {
+  const findings = checkPII(content);
+  const types = extractPiiTypes(findings);
   return {
     containsPII: containsPII(content),
     riskScore: getPIIRiskScore(content),

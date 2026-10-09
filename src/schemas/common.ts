@@ -64,3 +64,38 @@ export const ENGINE_IDS = [
   'jsonValidator',
   'csm6'
 ] as const;
+
+/**
+ * Bounds on caller-supplied JSON Schema input (`expectedSchema`): caps
+ * serialized size and nesting depth so a malicious/giant schema cannot
+ * exhaust the validator or the response budget.
+ */
+const MAX_SCHEMA_BYTES = 64 * 1024;
+const MAX_SCHEMA_DEPTH = 32;
+
+function jsonDepth(value: unknown, depth: number): number {
+  if (depth > MAX_SCHEMA_DEPTH || value === null || typeof value !== 'object') {
+    return depth;
+  }
+  const children = Array.isArray(value)
+    ? value
+    : Object.values(value as Record<string, unknown>);
+  let max = depth;
+  for (const child of children) {
+    const d = jsonDepth(child, depth + 1);
+    if (d > max) max = d;
+    if (max > MAX_SCHEMA_DEPTH) break;
+  }
+  return max;
+}
+
+export const jsonSchemaField = z
+  .record(z.string(), z.unknown())
+  .refine(
+    (v) => Buffer.byteLength(JSON.stringify(v), 'utf-8') <= MAX_SCHEMA_BYTES,
+    `expectedSchema exceeds ${MAX_SCHEMA_BYTES} serialized bytes`
+  )
+  .refine(
+    (v) => jsonDepth(v, 0) <= MAX_SCHEMA_DEPTH,
+    `expectedSchema exceeds ${MAX_SCHEMA_DEPTH} levels of nesting`
+  );

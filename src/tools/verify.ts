@@ -15,13 +15,15 @@ import {
   truncationSchema,
   engineIdentitySchema,
   toolErrorSchema,
+  jsonSchemaField,
   ENGINE_IDS
 } from '../schemas/common.js';
 import {
   verifyContent,
   type VerifyToolInput
 } from '../adapters/llmverify.js';
-import { boundVerifyResult } from '../security/bounds.js';
+import { boundVerifyResult, type TruncationReport } from '../security/bounds.js';
+import { enforceResponseBudget } from '../security/size.js';
 import { ADAPTER_CONTRACT_VERSION, ADAPTER_NAME, adapterVersion } from '../contracts/version.js';
 import { okResult, errorResult } from '../contracts/results.js';
 
@@ -40,8 +42,7 @@ const inputSchema = z.object({
       'Declare that content is intended as JSON. Gates the JSON ' +
         'validator onto non-JSON input and affects which engines run.'
     ),
-  expectedSchema: z
-    .record(z.string(), z.unknown())
+  expectedSchema: jsonSchemaField
     .optional()
     .describe(
       'JSON Schema object the JSON validator should check content ' +
@@ -51,8 +52,10 @@ const inputSchema = z.object({
     .array(z.enum(ENGINE_IDS))
     .optional()
     .describe(
-      'Engine identifiers to skip for this call. Skipped engines are ' +
-        'reported in notChecked — never as success.'
+      'Engine identifiers to skip for this call. The adapter maps the ' +
+        'public id jsonValidator onto the engine-internal id "json". ' +
+        'Skipped engines are reported in notChecked under their ' +
+        'engine-internal names — never as success.'
     ),
   requireAuditPersistence: z
     .boolean()
@@ -156,6 +159,27 @@ export function registerVerifyTool(server: McpServer): void {
           output
         };
 
+        // Serialized-size budget: if the envelope exceeds it, drop the
+        // bulky engineResults pass-through (counts + names preserved),
+        // re-measure, and fail with a typed size error if still over.
+        const finalStructured = enforceResponseBudget(structured, (s) => {
+          const truncations = [
+            ...output.truncations,
+            { path: 'engineResults', omitted: 1 }
+          ];
+          return {
+            ...s,
+            engineResults: {
+              omittedForSize: true,
+              engines: Object.keys(
+                s.engineResults as Record<string, unknown>
+              )
+            },
+            output: { truncated: true, truncations } as TruncationReport
+          };
+        });
+        const finalOutput = finalStructured.output as TruncationReport;
+
         const audit = structured.audit as { status: string };
         const summary = [
           `Risk: ${bounded.risk.level} (${bounded.risk.overall}) — action: ${bounded.risk.action}`,
@@ -164,15 +188,15 @@ export function registerVerifyTool(server: McpServer): void {
             ? `Not evaluated: ${(bounded.notChecked as string[]).join(', ')}`
             : null,
           `Audit: ${audit.status}`,
-          output.truncated
-            ? `Output truncated: ${output.truncations.map((t) => `${t.path}(-${t.omitted})`).join(', ')}`
+          finalOutput.truncated
+            ? `Output truncated: ${finalOutput.truncations.map((t) => `${t.path}(-${t.omitted})`).join(', ')}`
             : null,
           'Note: heuristic risk signal, not factual verification.'
         ]
           .filter(Boolean)
           .join('\n');
 
-        return okResult(structured, summary);
+        return okResult(finalStructured, summary);
       } catch (err) {
         return errorResult(err);
       }

@@ -17,6 +17,12 @@ import {
 } from '../schemas/common.js';
 import { redactPii } from '../adapters/llmverify.js';
 import { TruncationTracker } from '../security/bounds.js';
+import {
+  enforceResponseBudget,
+  getMaxOutputBytes,
+  measureBytes,
+  outputSizeError
+} from '../security/size.js';
 import { ADAPTER_CONTRACT_VERSION, ADAPTER_NAME, adapterVersion } from '../contracts/version.js';
 import { okResult, errorResult } from '../contracts/results.js';
 import { VERSION as ENGINE_VERSION } from 'llmverify';
@@ -78,24 +84,60 @@ export function registerRedactTool(server: McpServer): void {
         const t = new TruncationTracker();
         const redactions = t.bound(result.redactions, 'redactions');
 
+        // A redacted document that does not fit the budget is a
+        // SIZE-LIMIT RESULT, never a truncated string passed off as a
+        // complete redaction — a truncated redaction could silently
+        // corrupt downstream content.
+        const budget = getMaxOutputBytes();
+        if (measureBytes(result.redacted) > budget) {
+          return errorResult(
+            outputSizeError(
+              measureBytes(result.redacted),
+              budget,
+              'the redacted document itself exceeds the response ' +
+                'budget and cannot be returned safely truncated; ' +
+                'raise LLMVERIFY_MCP_MAX_OUTPUT_BYTES or call the ' +
+                'llmverify redactPII API directly for large documents'
+            )
+          );
+        }
+
+        const structured: Record<string, unknown> = {
+          adapter: {
+            name: ADAPTER_NAME,
+            version: adapterVersion(),
+            contractVersion: ADAPTER_CONTRACT_VERSION
+          },
+          engine: { name: 'llmverify', version: ENGINE_VERSION },
+          evaluation: 'COMPLETED',
+          redacted: result.redacted,
+          piiCount: result.piiCount,
+          redactions,
+          limitations: [
+            'Pattern-based redaction is not exhaustive — verify output before disclosure use',
+            'Original values are withheld by design; use position metadata for review'
+          ],
+          output: t.report()
+        };
+
+        const finalStructured = enforceResponseBudget(structured, (s) => {
+          const omitted = (s.redactions as unknown[]).length;
+          return {
+            ...s,
+            redactions: [],
+            redactionsOmitted: omitted,
+            output: {
+              truncated: true,
+              truncations: [
+                ...(s.output as { truncations: unknown[] }).truncations,
+                { path: 'redactions', omitted }
+              ]
+            }
+          };
+        });
+
         return okResult(
-          {
-            adapter: {
-              name: ADAPTER_NAME,
-              version: adapterVersion(),
-              contractVersion: ADAPTER_CONTRACT_VERSION
-            },
-            engine: { name: 'llmverify', version: ENGINE_VERSION },
-            evaluation: 'COMPLETED',
-            redacted: result.redacted,
-            piiCount: result.piiCount,
-            redactions,
-            limitations: [
-              'Pattern-based redaction is not exhaustive — verify output before disclosure use',
-              'Original values are withheld by design; use position metadata for review'
-            ],
-            output: t.report()
-          } as Record<string, unknown>,
+          finalStructured,
           `Redacted ${result.piiCount} PII match(es). Pattern coverage ` +
             'is not exhaustive — review before disclosure use.'
         );

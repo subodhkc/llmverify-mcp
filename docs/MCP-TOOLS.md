@@ -31,7 +31,7 @@ increment the local usage counter and append an audit record.
 | `profile` | enum | no | CSM6 profile: `baseline`, `high_risk`, `finance`, `health`, `research` |
 | `isJSON` | boolean | no | Declares content is JSON — gates the JSON validator |
 | `expectedSchema` | object | no | JSON Schema for the JSON validator (needs `isJSON: true`) |
-| `skipEngines` | enum[] | no | Any of `hallucination`, `consistency`, `jsonValidator`, `csm6` |
+| `skipEngines` | enum[] | no | Public ids: `hallucination`, `consistency`, `jsonValidator`, `csm6`. The adapter maps `jsonValidator` → the engine-internal id `json` before calling `verify()`; `enginesNotChecked` reports the engine's own name (`json`). Unknown ids are rejected at input validation. |
 | `requireAuditPersistence` | boolean | no | Evidence-required mode (default false) |
 
 **Output (additions to the envelope)**
@@ -52,10 +52,14 @@ increment the local usage counter and append an audit record.
 Hallucination-risk signals only, via `HallucinationEngine`. Read-only —
 no state writes. **Input:** `content`.
 
-**Output:** `riskScore`, `riskLevel` (engine thresholds: ≥0.75 critical,
-≥0.5 high, ≥0.25 moderate), `riskIndicators`, `suspiciousClaims`
-(bounded), `claimsEvaluated`, `confidence`, `methodology`, `limitations`,
-`evaluation: "COMPLETED"`.
+**Output:** `riskScore`, `riskLabel` — the **engine-authoritative**
+classification from llmverify's exported `getHallucinationLabel()`:
+`low` (≤0.3), `medium` (≤0.6), `high` (>0.6). Note this label set is
+deliberately different from `verify()`'s four-band `risk.level`
+(`low/moderate/high/critical`) — the hallucination score has its own
+semantics and is not re-mapped by the adapter. Also: `riskIndicators`,
+`suspiciousClaims` (bounded), `claimsEvaluated`, `confidence`,
+`methodology`, `limitations`, `evaluation: "COMPLETED"`.
 
 A flagged claim is not established as false; an unflagged claim is not
 established as true.
@@ -92,6 +96,11 @@ In-memory redaction via `redactPII`. Read-only.
 (`[{type, position}]` — original values withheld), `limitations`,
 `evaluation`.
 
+If the redacted document exceeds the serialized output budget
+(`LLMVERIFY_MCP_MAX_OUTPUT_BYTES`, default 256 KiB) the tool returns
+`MCP_ADAPTER_OUTPUT_TOO_LARGE` with **no** `redacted` field — a
+truncated redaction is never presented as complete.
+
 ## get_llmverify_capabilities
 
 Capability discovery via `getEngineCapabilities()` + `getPackageInfo()`.
@@ -107,7 +116,9 @@ Read-only. **Input:** none.
 | Code | Source | Meaning |
 |---|---|---|
 | `LLMVERIFY_8001` | `AuditPersistenceError` | Persistence required but status was FAILED/DISABLED/NOT_ATTEMPTED |
-| `MCP_ADAPTER_TIMEOUT` | adapter | Tool exceeded `LLMVERIFY_MCP_TIMEOUT_MS` |
+| `MCP_ADAPTER_TIMEOUT` | `AdapterTimeoutError` | Caller-facing deadline exceeded; underlying engine work is NOT cancelled — see timeout semantics in docs/SECURITY.md |
+| `MCP_ADAPTER_QUEUE_FULL` | `ExecutionQueueError` | Serialized lane at capacity (`LLMVERIFY_MCP_MAX_QUEUE_DEPTH`) — retry later |
+| `MCP_ADAPTER_OUTPUT_TOO_LARGE` | `OutputSizeError` | Result exceeded `LLMVERIFY_MCP_MAX_OUTPUT_BYTES` even after honest degradation |
 | `MCP_ADAPTER_CONTRACT_VIOLATION` | adapter | Engine output failed `validateVerifyResult` |
 | `MCP_ADAPTER_INTERNAL` | adapter | Unexpected error |
 | engine error codes | llmverify | e.g. `USAGE_LIMIT_EXCEEDED`, `INVALID_INPUT`, `CONTENT_TOO_LARGE` — passed through with their code |

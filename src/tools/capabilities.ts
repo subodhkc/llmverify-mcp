@@ -14,6 +14,8 @@ import { describeCapabilities } from '../adapters/llmverify.js';
 import { ADAPTER_CONTRACT_VERSION, ADAPTER_NAME, adapterVersion } from '../contracts/version.js';
 import { okResult, errorResult } from '../contracts/results.js';
 import { LIMITS } from '../security/limits.js';
+import { getMaxOutputBytes } from '../security/size.js';
+import { verifyLane } from '../security/lane.js';
 
 const outputSchema = z.looseObject({
   adapter: z.object({
@@ -71,7 +73,13 @@ export function registerCapabilitiesTool(server: McpServer): void {
               maxInputChars: LIMITS.maxInputChars,
               toolTimeoutMs: LIMITS.toolTimeoutMs,
               maxOutputItems: LIMITS.maxOutputItems,
-              maxTextFieldChars: LIMITS.maxTextFieldChars
+              maxTextFieldChars: LIMITS.maxTextFieldChars,
+              maxOutputBytes: getMaxOutputBytes(),
+              maxQueueDepth: verifyLane.capacity,
+              executionModel:
+                'verify calls serialize through an in-process lane; ' +
+                'timeouts return MCP_ADAPTER_TIMEOUT but do NOT cancel ' +
+                'engine work — the lane stays occupied until it settles'
             },
             localState: caps.localState,
             resultSchemaFile: caps.resultSchemaFile

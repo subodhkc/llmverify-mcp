@@ -20,6 +20,7 @@ import { ADAPTER_CONTRACT_VERSION, ADAPTER_NAME, adapterVersion } from '../contr
 import { okResult, errorResult } from '../contracts/results.js';
 import { VERSION as ENGINE_VERSION } from 'llmverify';
 import { LIMITS } from '../security/limits.js';
+import { enforceResponseBudget } from '../security/size.js';
 
 const inputSchema = z.object({
   input: contentField.describe(
@@ -99,20 +100,19 @@ export function registerInjectionTool(server: McpServer): void {
           )
         ].slice(0, LIMITS.maxOutputItems);
 
-        return okResult(
-          {
-            adapter: {
-              name: ADAPTER_NAME,
-              version: adapterVersion(),
-              contractVersion: ADAPTER_CONTRACT_VERSION
-            },
-            engine: { name: 'llmverify', version: ENGINE_VERSION },
-            evaluation: 'COMPLETED',
-            inputSafe: assessment.inputSafe,
-            riskScore: assessment.riskScore,
-            indicatorsObserved: assessment.findings.length > 0,
-            findings: findings as Record<string, unknown>[],
-            findingsCount: assessment.findings.length,
+        const structured: Record<string, unknown> = {
+          adapter: {
+            name: ADAPTER_NAME,
+            version: adapterVersion(),
+            contractVersion: ADAPTER_CONTRACT_VERSION
+          },
+          engine: { name: 'llmverify', version: ENGINE_VERSION },
+          evaluation: 'COMPLETED',
+          inputSafe: assessment.inputSafe,
+          riskScore: assessment.riskScore,
+          indicatorsObserved: assessment.findings.length > 0,
+          findings: findings as Record<string, unknown>[],
+          findingsCount: assessment.findings.length,
             recommendations,
             methodology:
               'Pattern-based prompt-injection detection: instruction ' +
@@ -125,7 +125,30 @@ export function registerInjectionTool(server: McpServer): void {
               'Caller is responsible for downstream sanitization and policy enforcement'
             ],
             output: t.report()
-          } as Record<string, unknown>,
+        };
+
+        const finalStructured = enforceResponseBudget(structured, (s) => {
+          const fOmitted = (s.findings as unknown[]).length;
+          const rOmitted = (s.recommendations as unknown[]).length;
+          return {
+            ...s,
+            findings: [],
+            findingsOmitted: fOmitted,
+            recommendations: [],
+            recommendationsOmitted: rOmitted,
+            output: {
+              truncated: true,
+              truncations: [
+                ...(s.output as { truncations: unknown[] }).truncations,
+                { path: 'findings', omitted: fOmitted },
+                { path: 'recommendations', omitted: rOmitted }
+              ]
+            }
+          };
+        });
+
+        return okResult(
+          finalStructured,
           assessment.inputSafe
             ? `No injection indicators observed (risk ${assessment.riskScore.toFixed(2)}). ` +
                 'Not a safety guarantee — pattern detection only.'
